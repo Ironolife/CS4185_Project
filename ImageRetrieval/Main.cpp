@@ -45,7 +45,7 @@ int main(int argc, char** argv)
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 0;
+	int db_id = 980;
 
 	const int score_size = 10;   //change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
