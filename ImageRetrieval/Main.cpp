@@ -6,6 +6,8 @@
 
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/nonfree/features2d.hpp"
+#include "opencv2/legacy/legacy.hpp"
 #include <iostream>
 #include <stdio.h>
 #include <algorithm>
@@ -25,14 +27,43 @@ using namespace cv;
 //Compute pixel-by-pixel difference
 double compareImgs(Mat img1, Mat img2)
 {
-	int w = img1.cols, h = img1.rows;
-	Mat new_img2;
-	resize(img2, new_img2, img1.size());
-	double sum = 0;
-	for (int i = 0; i < w; i++)for (int j = 0; j < h; j++)
-	{
-		sum += abs(img1.at<uchar>(j, i) - new_img2.at<uchar>(j, i));
+	// detecting keypoints
+	SurfFeatureDetector detector(400);
+	vector<KeyPoint> keypoints1, keypoints2;
+	detector.detect(img1, keypoints1);
+	detector.detect(img2, keypoints2);
+
+	// computing descriptors
+	SurfDescriptorExtractor extractor;
+	Mat descriptors1, descriptors2;
+	extractor.compute(img1, keypoints1, descriptors1);
+	extractor.compute(img2, keypoints2, descriptors2);
+
+	// matching descriptors
+	BruteForceMatcher<L2<float> > matcher;
+	vector<DMatch> matches;
+	matcher.match(descriptors1, descriptors2, matches);
+
+	// computing keypoints distance range
+	double maxDistance = 0;
+	double minDistance = 100;
+	for (int i = 0; i < descriptors1.rows; i++) {
+		double distance = matches[i].distance;
+		if (distance < minDistance) minDistance = distance;
+		if (distance > maxDistance) maxDistance = distance;
 	}
+
+	// computing dissimilarity score
+	vector<DMatch> goodMatches;
+	double sum = 0;
+	for (int i = 0; i < descriptors1.rows; i++) {
+		double distance = matches[i].distance;
+		if (distance <= max(2 * minDistance, 0.02)) {
+			goodMatches.push_back(matches[i]);
+			sum += distance;
+		}
+	}
+
 	return sum;
 }
 
@@ -45,7 +76,7 @@ int main(int argc, char** argv)
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 980;
+	int db_id = 990;
 
 	const int score_size = 10;   //change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };

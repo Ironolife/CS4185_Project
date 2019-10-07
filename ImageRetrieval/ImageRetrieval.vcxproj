@@ -84,6 +84,10 @@
     <IncludePath>$(OPENCV)\include\;$(IncludePath)</IncludePath>
     <LibraryPath>$(OPENCV)\x86\vc12\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(OPENCV)\include\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(OPENCV)\x64\vc12\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
