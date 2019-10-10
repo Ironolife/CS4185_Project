@@ -15,29 +15,29 @@
 using namespace std;
 using namespace cv;
 
-#define IMAGE_folder "D:\\dataset"     // change to your folder location
-#define IMAGE_LIST_FILE "dataset1"         //the dataset1 for retrieval
-#define output_LIST_FILE "searchResults"  //the search results will store in this file
-#define SEARCH_IMAGE "999.jpg"   //change from 990 to 999 as the search images to get your output
+#define IMAGE_folder "H:\\dataset" // change to your folder location
+#define IMAGE_LIST_FILE "dataset1" //the dataset1 for retrieval
+#define output_LIST_FILE "searchResults" //the search results will store in this file
+#define SEARCH_IMAGE "999.jpg" //change from 990 to 999 as the search images to get your output
 
-/**
-* @function main
-*/
-
-//Compute pixel-by-pixel difference
-double compareImgs(Mat img1, Mat img2)
+double featureMatching(Mat img1, Mat img2)
 {
+	// convert to grayscale
+	Mat gray1, gray2;
+	cvtColor(img1, gray1, COLOR_BGR2GRAY);
+	cvtColor(img2, gray2, COLOR_BGR2GRAY);
+
 	// detecting keypoints
 	SurfFeatureDetector detector(400);
 	vector<KeyPoint> keypoints1, keypoints2;
-	detector.detect(img1, keypoints1);
-	detector.detect(img2, keypoints2);
+	detector.detect(gray1, keypoints1);
+	detector.detect(gray2, keypoints2);
 
 	// computing descriptors
 	SurfDescriptorExtractor extractor;
 	Mat descriptors1, descriptors2;
-	extractor.compute(img1, keypoints1, descriptors1);
-	extractor.compute(img2, keypoints2, descriptors2);
+	extractor.compute(gray1, keypoints1, descriptors1);
+	extractor.compute(gray2, keypoints2, descriptors2);
 
 	// matching descriptors
 	BruteForceMatcher<L2<float> > matcher;
@@ -55,30 +55,38 @@ double compareImgs(Mat img1, Mat img2)
 
 	// computing dissimilarity score
 	vector<DMatch> goodMatches;
-	double sum = 0;
+	double score = 0;
 	for (int i = 0; i < descriptors1.rows; i++) {
 		double distance = matches[i].distance;
 		if (distance <= max(2 * minDistance, 0.02)) {
 			goodMatches.push_back(matches[i]);
-			sum += distance;
+			score += distance;
 		}
 	}
 
-	return sum;
+	return score;
+}
+
+//Compute similarity
+double compareImgs(Mat img1, Mat img2)
+{
+	double score = 0;
+
+	return score;
 }
 
 int main(int argc, char** argv)
 {
-	Mat src_input, gray_input;
-	Mat db_img, db_gray_img;
+	Mat src_input;
+	Mat db_img;
 
 	const int filename_len = 900;
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 990;
+	int db_id = 0;
 
-	const int score_size = 10;   //change this to control return top n images
+	const int score_size = 10; //change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
 	int minFilename[score_size];
 
@@ -94,9 +102,8 @@ int main(int argc, char** argv)
 		return -1;
 	}
 	imshow("Input", src_input);
-	cvtColor(src_input, gray_input, COLOR_BGR2GRAY); // Convert to grayscale
 
-													 //Read Database
+	//Read Database
 	for (db_id; db_id<db_size; db_id++) {
 		sprintf_s(tempname, filename_len, "%s\\%s\\%d.jpg", IMAGE_folder, IMAGE_LIST_FILE, db_id);
 		db_img = imread(tempname); // read database image
@@ -106,10 +113,9 @@ int main(int argc, char** argv)
 			system("pause");
 			return -1;
 		}
-		cvtColor(db_img, db_gray_img, COLOR_BGR2GRAY); // Convert to grayscale
 
-													   // Apply the pixel-by-pixel comparison method
-		double tempScore = compareImgs(gray_input, db_gray_img);
+		// Apply the pixel-by-pixel comparison method
+		double tempScore = compareImgs(src_input, db_img);
 
 		//store the top k min score ascending
 		for (int k = 0; k<score_size; k++) {
