@@ -67,10 +67,61 @@ double featureMatching(Mat img1, Mat img2)
 	return score;
 }
 
+int findCircle(Mat img1, Mat img2)
+{
+	// convert to grayscale
+	Mat gray1, gray2;
+	cvtColor(img1, gray1, COLOR_BGR2GRAY);
+	cvtColor(img2, gray2, COLOR_BGR2GRAY);
+
+	//// resize image
+	//int w = gray1.cols, h = gray1.rows;
+	//resize(gray2, gray2, gray1.size());
+
+	// apply blur
+	medianBlur(gray1, gray1, 5);
+	medianBlur(gray2, gray2, 5);
+
+	// find circles
+	vector<Vec3f> circles1, circles2;
+	HoughCircles(gray1, circles1, CV_HOUGH_GRADIENT, 1, gray1.rows / 16, 30, 100, 150, 400);
+	HoughCircles(gray2, circles2, CV_HOUGH_GRADIENT, 1, gray2.rows / 16, 30, 100, 150, 400);
+
+	for (size_t i = 0; i < circles1.size(); i++)
+	{
+		Point center(cvRound(circles1[i][0]), cvRound(circles1[i][1]));
+		int radius = cvRound(circles1[i][2]);
+		// circle center
+		circle(gray1, center, 3, Scalar(0, 255, 0), -1, 8, 0);
+		// circle outline
+		circle(gray1, center, radius, Scalar(0, 0, 255), 3, 8, 0);
+	}
+	for (size_t i = 0; i < circles2.size(); i++)
+	{
+		Point center(cvRound(circles2[i][0]), cvRound(circles2[i][1]));
+		int radius = cvRound(circles2[i][2]);
+		// circle center
+		circle(gray2, center, 3, Scalar(0, 255, 0), -1, 8, 0);
+		// circle outline
+		circle(gray2, center, radius, Scalar(0, 0, 255), 3, 8, 0);
+	}
+
+	namedWindow("input", CV_WINDOW_AUTOSIZE);
+	imshow("input", gray1);
+	namedWindow("db", CV_WINDOW_AUTOSIZE);
+	imshow("db", gray2);
+
+	waitKey(0);
+
+	return 0;
+}
+
 //Compute similarity
 double compareImgs(Mat img1, Mat img2)
 {
 	double score = 0;
+
+	findCircle(img1, img2);
 
 	return score;
 }
@@ -84,7 +135,7 @@ int main(int argc, char** argv)
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 0;
+	int db_id = 990;
 
 	const int score_size = 10; //change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
