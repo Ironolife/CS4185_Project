@@ -22,25 +22,20 @@ using namespace cv;
 
 double featureMatching(Mat img1, Mat img2)
 {
-	// convert to grayscale
-	Mat gray1, gray2;
-	cvtColor(img1, gray1, COLOR_BGR2GRAY);
-	cvtColor(img2, gray2, COLOR_BGR2GRAY);
-
 	// detecting keypoints
-	SurfFeatureDetector detector(400);
+	SiftFeatureDetector detector;
 	vector<KeyPoint> keypoints1, keypoints2;
-	detector.detect(gray1, keypoints1);
-	detector.detect(gray2, keypoints2);
+	detector.detect(img1, keypoints1);
+	detector.detect(img2, keypoints2);
 
 	// computing descriptors
-	SurfDescriptorExtractor extractor;
+	SiftDescriptorExtractor extractor;
 	Mat descriptors1, descriptors2;
-	extractor.compute(gray1, keypoints1, descriptors1);
-	extractor.compute(gray2, keypoints2, descriptors2);
+	extractor.compute(img1, keypoints1, descriptors1);
+	extractor.compute(img2, keypoints2, descriptors2);
 
 	// matching descriptors
-	BruteForceMatcher<L2<float> > matcher;
+	BFMatcher matcher(NORM_L2);
 	vector<DMatch> matches;
 	matcher.match(descriptors1, descriptors2, matches);
 
@@ -58,11 +53,16 @@ double featureMatching(Mat img1, Mat img2)
 	double score = 0;
 	for (int i = 0; i < descriptors1.rows; i++) {
 		double distance = matches[i].distance;
-		if (distance <= max(2 * minDistance, 0.02)) {
+		if (distance <= max(1.5 * minDistance, 0.02)) {
 			goodMatches.push_back(matches[i]);
 			score += distance;
 		}
 	}
+
+	Mat mat_img;
+	drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, mat_img, Scalar::all(-1), Scalar::all(-1), vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+	imshow("Good Matches", mat_img);
+	waitKey(0);
 
 	return score;
 }
@@ -85,7 +85,7 @@ int findCircle(Mat img1, Mat img2)
 	// find circles
 	vector<Vec3f> circles1, circles2;
 	HoughCircles(gray1, circles1, CV_HOUGH_GRADIENT, 1, gray1.rows / 16, 30, 100, 150, 400);
-	HoughCircles(gray2, circles2, CV_HOUGH_GRADIENT, 1, gray2.rows / 16, 30, 100, 150, 400);
+	HoughCircles(gray2, circles2, CV_HOUGH_GRADIENT, 1, gray2.rows, 60, 75, 50, 0);
 
 	for (size_t i = 0; i < circles1.size(); i++)
 	{
@@ -122,6 +122,8 @@ double compareImgs(Mat img1, Mat img2)
 	double score = 0;
 
 	findCircle(img1, img2);
+
+	//score = featureMatching(img1, img2);
 
 	return score;
 }
