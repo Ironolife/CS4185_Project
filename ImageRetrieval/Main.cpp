@@ -24,6 +24,11 @@ struct features {
 	Mat histograms[5];
 };
 
+struct crops {
+	Mat crop_obj;
+	Mat crop_scene;
+};
+
 features getHist(Mat img)
 {
 	//Convert to HSV
@@ -67,24 +72,19 @@ features getHist(Mat img)
 	return features;
 }
 
-double featureMatching(Mat img1, Mat img2)
+crops featureMatching(Mat img1, Mat img2)
 {
-	// apply blur
-	Mat blur1, blur2;
-	medianBlur(img1, blur1, 5);
-	medianBlur(img2, blur2, 5);
-
 	// detecting keypoints
 	SiftFeatureDetector detector;
 	vector<KeyPoint> keypoints1, keypoints2;
-	detector.detect(blur1, keypoints1);
-	detector.detect(blur2, keypoints2);
+	detector.detect(img1, keypoints1);
+	detector.detect(img2, keypoints2);
 
 	// computing descriptors
 	SiftDescriptorExtractor extractor;
 	Mat descriptors1, descriptors2;
-	extractor.compute(blur1, keypoints1, descriptors1);
-	extractor.compute(blur2, keypoints2, descriptors2);
+	extractor.compute(img1, keypoints1, descriptors1);
+	extractor.compute(img2, keypoints2, descriptors2);
 
 	// matching descriptors
 	BFMatcher matcher(NORM_L2);
@@ -111,16 +111,80 @@ double featureMatching(Mat img1, Mat img2)
 		}
 	}
 
-	/*Mat mat_img;
+	Mat mat_img;
 	drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, mat_img, Scalar::all(-1), Scalar::all(-1), vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-	imshow("Good Matches", mat_img);
-	waitKey(0);*/
 
-	if (goodMatches.size() == 0) {
-		score = -1;
+	crops crops;
+
+	if (goodMatches.size() != 0) {
+
+		vector<Point2f> matchingObjectPoints;
+		vector<Point2f> matchingScenePoints;
+
+		for (int i = 0; i < goodMatches.size(); i++) {
+			matchingObjectPoints.push_back(keypoints1[goodMatches[i].queryIdx].pt);
+			matchingScenePoints.push_back(keypoints2[goodMatches[i].trainIdx].pt);
+		}
+
+		double obj_startX = img1.size().width;
+		double obj_endX = 0;
+		double obj_startY = img1.size().height;
+		double obj_endY = 0;
+
+		for (int i = 0; i < goodMatches.size(); i++) {
+			if (matchingObjectPoints[i].x > obj_endX) {
+				obj_endX = matchingObjectPoints[i].x;
+			}
+			if (matchingObjectPoints[i].x < obj_startX) {
+				obj_startX = matchingObjectPoints[i].x;
+			}
+			if (matchingObjectPoints[i].y > obj_endY) {
+				obj_endY = matchingObjectPoints[i].y;
+			}
+			if (matchingObjectPoints[i].y < obj_startY) {
+				obj_startY = matchingObjectPoints[i].y;
+			}
+		}
+
+		double scene_startX = img2.size().width;
+		double scene_endX = 0;
+		double scene_startY = img2.size().height;
+		double scene_endY = 0;
+
+		for (int i = 0; i < goodMatches.size(); i++) {
+			if (matchingScenePoints[i].x > scene_endX) {
+				scene_endX = matchingScenePoints[i].x;
+			}
+			if (matchingScenePoints[i].x < scene_startX) {
+				scene_startX = matchingScenePoints[i].x;
+			}
+			if (matchingScenePoints[i].y > scene_endY) {
+				scene_endY = matchingScenePoints[i].y;
+			}
+			if (matchingScenePoints[i].y < scene_startY) {
+				scene_startY = matchingScenePoints[i].y;
+			}
+		}
+		Mat objectCrop = img1(Rect(obj_startX, obj_startY, obj_endX - obj_startX, obj_endY - obj_startY));
+		Mat sceneCrop = img2(Rect(scene_startX, scene_startY, scene_endX - scene_startX, scene_endY - scene_startY));
+
+		double objArea = (obj_endX - obj_startX) * (obj_endY - obj_startY);
+		double sceneArea = (scene_endX - scene_startX) * (scene_endY - scene_startY);
+
+		if (objArea < 1600 || sceneArea < 1600) {
+			return crops;
+		}
+
+		/*imshow("object", objectCrop);
+		imshow("scene", sceneCrop);
+		imshow("Good Matches", mat_img);
+		waitKey(0);*/
+
+		crops.crop_obj = objectCrop;
+		crops.crop_scene = sceneCrop;
 	}
 
-	return score;
+	return crops;
 }
 
 int findCircle(Mat img)
@@ -158,20 +222,24 @@ double compareImgs(Mat img1, Mat img2)
 {
 	double score = 0;
 
-	features features1 = getHist(img1);
-	features features2 = getHist(img2);
+	crops crops = featureMatching(img1, img2);
 
-	for (int i = 0; i < 5; i++) {
-		score += compareHist(features1.histograms[i], features2.histograms[i], 1);
-	}
+	if (!crops.crop_scene.empty()) {
+		Mat crop_obj = crops.crop_obj;
+		Mat crops_scene = crops.crop_scene;
 
-	if (featureMatching(img1, img2) != -1)
-	{
-		return score;
+		features features1 = getHist(crop_obj);
+		features features2 = getHist(crops_scene);
+
+		for (int i = 0; i < 5; i++) {
+			score += compareHist(features1.histograms[i], features2.histograms[i], 1);
+		}
 	}
 	else {
-		return DBL_MAX;
+		score = DBL_MAX;
 	}
+
+	return score;
 }
 
 int main(int argc, char** argv)
@@ -183,7 +251,7 @@ int main(int argc, char** argv)
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 950;
+	int db_id = 0;
 
 	const int score_size = 10; //Change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
