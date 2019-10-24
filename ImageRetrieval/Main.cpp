@@ -15,7 +15,7 @@
 using namespace std;
 using namespace cv;
 
-#define IMAGE_folder "D:\\dataset" // change to your folder location
+#define IMAGE_folder "H:\\dataset" // change to your folder location
 #define IMAGE_LIST_FILE "dataset1" //the dataset1 for retrieval
 #define output_LIST_FILE "searchResults" //the search results will store in this file
 #define SEARCH_IMAGE "999.jpg" //change from 990 to 999 as the search images to get your output
@@ -106,10 +106,14 @@ double featureMatching(Mat img1, Mat img2)
 		}
 	}
 
-	Mat mat_img;
+	/*Mat mat_img;
 	drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, mat_img, Scalar::all(-1), Scalar::all(-1), vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
 	imshow("Good Matches", mat_img);
-	waitKey(0);
+	waitKey(0);*/
+
+	if (goodMatches.size() == 0) {
+		score = DBL_MAX;
+	}
 
 	return score;
 }
@@ -137,10 +141,9 @@ int findCircle(Mat img)
 		circle(gray, center, radius, Scalar(0, 0, 255), 3, 8, 0);
 	}
 
-	namedWindow("circle", CV_WINDOW_AUTOSIZE);
+	/*namedWindow("circle", CV_WINDOW_AUTOSIZE);
 	imshow("circle", gray);
-
-	waitKey(0);
+	waitKey(0);*/
 
 	return circles.size();
 }
@@ -153,11 +156,11 @@ double compareImgs(Mat img1, Mat img2)
 	features features1 = getHist(img1);
 	features features2 = getHist(img2);
 
-	findCircle(img2);
-
 	for (int i = 0; i < 5; i++) {
 		score += compareHist(features1.histograms[i], features2.histograms[i], 1);
 	}
+
+	score *= featureMatching(img1, img2);
 
 	return score;
 }
@@ -171,7 +174,7 @@ int main(int argc, char** argv)
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 990;
+	int db_id = 0;
 
 	const int score_size = 10; //Change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
@@ -203,6 +206,8 @@ int main(int argc, char** argv)
 
 		//Apply the pixel-by-pixel comparison method
 		double tempScore = compareImgs(src_input, db_img);
+
+		printf("%s done!\n", tempname);
 
 		//Store the top k min score ascending
 		for (int k = 0; k<score_size; k++) {
