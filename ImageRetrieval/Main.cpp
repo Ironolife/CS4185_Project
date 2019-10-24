@@ -69,17 +69,22 @@ features getHist(Mat img)
 
 double featureMatching(Mat img1, Mat img2)
 {
+	// apply blur
+	Mat blur1, blur2;
+	medianBlur(img1, blur1, 5);
+	medianBlur(img2, blur2, 5);
+
 	// detecting keypoints
 	SiftFeatureDetector detector;
 	vector<KeyPoint> keypoints1, keypoints2;
-	detector.detect(img1, keypoints1);
-	detector.detect(img2, keypoints2);
+	detector.detect(blur1, keypoints1);
+	detector.detect(blur2, keypoints2);
 
 	// computing descriptors
 	SiftDescriptorExtractor extractor;
 	Mat descriptors1, descriptors2;
-	extractor.compute(img1, keypoints1, descriptors1);
-	extractor.compute(img2, keypoints2, descriptors2);
+	extractor.compute(blur1, keypoints1, descriptors1);
+	extractor.compute(blur2, keypoints2, descriptors2);
 
 	// matching descriptors
 	BFMatcher matcher(NORM_L2);
@@ -112,7 +117,7 @@ double featureMatching(Mat img1, Mat img2)
 	waitKey(0);*/
 
 	if (goodMatches.size() == 0) {
-		score = DBL_MAX;
+		score = -1;
 	}
 
 	return score;
@@ -160,9 +165,13 @@ double compareImgs(Mat img1, Mat img2)
 		score += compareHist(features1.histograms[i], features2.histograms[i], 1);
 	}
 
-	score *= featureMatching(img1, img2);
-
-	return score;
+	if (featureMatching(img1, img2) != -1)
+	{
+		return score;
+	}
+	else {
+		return DBL_MAX;
+	}
 }
 
 int main(int argc, char** argv)
@@ -174,7 +183,7 @@ int main(int argc, char** argv)
 	char tempname[filename_len];
 
 	const int db_size = 1000;
-	int db_id = 0;
+	int db_id = 950;
 
 	const int score_size = 10; //Change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
