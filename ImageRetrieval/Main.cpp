@@ -148,6 +148,7 @@ features getFeatures(Mat img, int index)
 	char indexName[filename_len];
 	sprintf_s(indexName, filename_len, "%s\\%s\\%s%s", IMAGE_folder, IMAGE_LIST_FILE, std::to_string(index), INDEX_extension);
 
+	// Read index file
 	FileStorage fr(indexName, FileStorage::READ);
 
 	if (fr["pentagons"].size() > 0) { // File exists
@@ -190,7 +191,7 @@ features getFeatures(Mat img, int index)
 // Compute similarity
 double compareImgs(Mat db_img, int db_index)
 {
-	if (searchFeatures.histogram.empty())
+	if (searchFeatures.histogram.empty()) // Search image does not contain pentagon or circles, thus is not a football image
 		return DBL_MAX;
 
 	features db_img_features = getFeatures(db_img, db_index);
@@ -198,7 +199,7 @@ double compareImgs(Mat db_img, int db_index)
 	if (!db_img_features.hasPentagons || !db_img_features.hasCircles)
 		return DBL_MAX;
 
-	return compareHist(searchFeatures.histogram, db_img_features.histogram, 1);
+	return compareHist(searchFeatures.histogram, db_img_features.histogram, 1); //compare histograms with chi-squared method
 }
 
 int main(int argc, char** argv)
@@ -232,11 +233,11 @@ int main(int argc, char** argv)
 	}
 	imshow("Input", src_input);
 
+	// Get search image features
 	int searchIndex = atoi(((string)SEARCH_IMAGE).erase(((string)SEARCH_IMAGE).find(".jpg"), 4).c_str());
-
 	searchFeatures = getFeatures(src_input, searchIndex);
 
-	//Read Database
+	// Read database
 	for (db_id; db_id<db_size; db_id++) {
 		sprintf_s(tempname, filename_len, "%s\\%s\\%d.jpg", IMAGE_folder, IMAGE_LIST_FILE, db_id);
 		db_img = imread(tempname); // Read database image
