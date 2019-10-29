@@ -6,11 +6,10 @@
 
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
-#include "opencv2/nonfree/features2d.hpp"
-#include "opencv2/legacy/legacy.hpp"
 #include <iostream>
 #include <stdio.h>
 #include <algorithm>
+#include <ctime>
 
 using namespace std;
 using namespace cv;
@@ -18,232 +17,188 @@ using namespace cv;
 #define IMAGE_folder "H:\\dataset" // change to your folder location
 #define IMAGE_LIST_FILE "dataset1" //the dataset1 for retrieval
 #define output_LIST_FILE "searchResults" //the search results will store in this file
-#define SEARCH_IMAGE "999.jpg" //change from 990 to 999 as the search images to get your output
+#define SEARCH_IMAGE "990.jpg" //change from 990 to 999 as the search images to get your output
+#define INDEX_extension ".yml" // file type for indexing
 
 struct features {
-	Mat histograms[5];
+	bool hasPentagons;
+	bool hasCircles;
+	Mat histogram;
 };
 
-struct crops {
-	Mat crop_obj;
-	Mat crop_scene;
-};
+features searchFeatures;
 
-features getHist(Mat img)
-{
-	//Convert to HSV
-	Mat hsv;
-	cvtColor(img, hsv, COLOR_BGR2HSV);
+bool findPentagons(Mat img) {
+	// Convert to grayscale
+	Mat gray;
+	cvtColor(img, gray, COLOR_RGB2GRAY);
 
-	//Find image dimensions & centers
-	int width = hsv.size().width, height = hsv.size().height;
-	int centerX = width / 2, centerY = height / 2;
+	// Apply blur
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
 
-	//Split image into 5 segments
-	Mat segMasks[5];
-	int segRectPoints[4][4] = {
-		{ 0, centerX, 0, centerY },
-		{centerX, width, 0, centerY},
-		{ 0, centerX, centerY, height},
-		{centerX, width, centerY, height},
-	};
+	Mat canny_output;
+	vector<vector<Point>> contours;
+	vector<Vec4i> hierarchy;
 
-	Mat centerMask = Mat::zeros(hsv.size(), 0);
-	ellipse(centerMask, Point(centerX, centerY), Point(centerX * 0.75, centerY * 0.75), 0, 0, 360, Scalar(255, 255, 255), -1);
+	// Detect edges using canny
+	Canny(gray, canny_output, 150, 150 * 2, 3);
+	// Find contours
+	findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 
-	for (int i = 0; i < 4; i++) {
-		segMasks[i] = Mat::zeros(hsv.size(), 0);
-		rectangle(segMasks[i], Point(segRectPoints[i][0], segRectPoints[i][2]), Point(segRectPoints[i][1], segRectPoints[i][3]), Scalar(255, 255, 255), -1);
-		subtract(segMasks[i], centerMask, segMasks[i]);
+	vector<vector<Point>> contours_poly(contours.size());
+
+	for (int i = 0; i < contours.size(); i++)
+		approxPolyDP(Mat(contours[i]), contours_poly[i], arcLength(contours[i], true) * 0.02, true);
+
+	// Filter for convex pentagons
+	vector<vector<Point>> hull(contours_poly.size());
+	for (int i = 0; i < contours_poly.size(); i++) {
+		if (contours_poly[i].size() == 5) {
+			convexHull(Mat(contours_poly[i]), hull[i], false);
+		}
 	}
 
-	//Calculate histogram for each region
-	int hBins = 8, sBins = 12;
-	int histSize[] = { hBins, sBins };
-	float hRanges[] = { 0, 180 }, sRanges[] = { 0, 256 };
-	const float* ranges[] = { hRanges, sRanges };
-	int channels[] = { 0, 1 };
-	features features;
-	for (int i = 0; i < 5; i++) {
-		calcHist(&hsv, 1, channels, segMasks[i], features.histograms[i], 2, histSize, ranges);
-		normalize(features.histograms[i], features.histograms[i], 0, 1, NORM_MINMAX, -1, Mat());
+	/*Mat drawing = Mat::zeros(gray.size(), CV_8UC3);
+
+	for (int i = 0; i < contours_poly.size(); i++) {
+		drawContours(drawing, hull, i, Scalar(255, 0, 0), 1, 8, vector<Vec4i>(), 0, Point());
 	}
 
-	return features;
+	namedWindow("Pentagons", CV_WINDOW_AUTOSIZE);
+	imshow("Pentagons", drawing);
+
+	waitKey(0);*/
+
+	for (int i = 0; i < hull.size(); i++) {
+		if (hull[i].size() == 5)
+			return true;
+	}
+
+	return false;
 }
 
-crops featureMatching(Mat img1, Mat img2)
+bool findCircles(Mat img)
 {
-	// detecting keypoints
-	SiftFeatureDetector detector;
-	vector<KeyPoint> keypoints1, keypoints2;
-	detector.detect(img1, keypoints1);
-	detector.detect(img2, keypoints2);
-
-	// computing descriptors
-	SiftDescriptorExtractor extractor;
-	Mat descriptors1, descriptors2;
-	extractor.compute(img1, keypoints1, descriptors1);
-	extractor.compute(img2, keypoints2, descriptors2);
-
-	// matching descriptors
-	BFMatcher matcher(NORM_L2);
-	vector<DMatch> matches;
-	matcher.match(descriptors1, descriptors2, matches);
-
-	// computing keypoints distance range
-	double maxDistance = 0;
-	double minDistance = 100;
-	for (int i = 0; i < descriptors1.rows; i++) {
-		double distance = matches[i].distance;
-		if (distance < minDistance) minDistance = distance;
-		if (distance > maxDistance) maxDistance = distance;
-	}
-
-	// computing dissimilarity score
-	vector<DMatch> goodMatches;
-	double score = 0;
-	for (int i = 0; i < descriptors1.rows; i++) {
-		double distance = matches[i].distance;
-		if (distance <= max(1.5 * minDistance, 0.02)) {
-			goodMatches.push_back(matches[i]);
-			score += distance;
-		}
-	}
-
-	Mat mat_img;
-	drawMatches(img1, keypoints1, img2, keypoints2, goodMatches, mat_img, Scalar::all(-1), Scalar::all(-1), vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-
-	crops crops;
-
-	if (goodMatches.size() != 0) {
-
-		vector<Point2f> matchingObjectPoints;
-		vector<Point2f> matchingScenePoints;
-
-		for (int i = 0; i < goodMatches.size(); i++) {
-			matchingObjectPoints.push_back(keypoints1[goodMatches[i].queryIdx].pt);
-			matchingScenePoints.push_back(keypoints2[goodMatches[i].trainIdx].pt);
-		}
-
-		double obj_startX = img1.size().width;
-		double obj_endX = 0;
-		double obj_startY = img1.size().height;
-		double obj_endY = 0;
-
-		for (int i = 0; i < goodMatches.size(); i++) {
-			if (matchingObjectPoints[i].x > obj_endX) {
-				obj_endX = matchingObjectPoints[i].x;
-			}
-			if (matchingObjectPoints[i].x < obj_startX) {
-				obj_startX = matchingObjectPoints[i].x;
-			}
-			if (matchingObjectPoints[i].y > obj_endY) {
-				obj_endY = matchingObjectPoints[i].y;
-			}
-			if (matchingObjectPoints[i].y < obj_startY) {
-				obj_startY = matchingObjectPoints[i].y;
-			}
-		}
-
-		double scene_startX = img2.size().width;
-		double scene_endX = 0;
-		double scene_startY = img2.size().height;
-		double scene_endY = 0;
-
-		for (int i = 0; i < goodMatches.size(); i++) {
-			if (matchingScenePoints[i].x > scene_endX) {
-				scene_endX = matchingScenePoints[i].x;
-			}
-			if (matchingScenePoints[i].x < scene_startX) {
-				scene_startX = matchingScenePoints[i].x;
-			}
-			if (matchingScenePoints[i].y > scene_endY) {
-				scene_endY = matchingScenePoints[i].y;
-			}
-			if (matchingScenePoints[i].y < scene_startY) {
-				scene_startY = matchingScenePoints[i].y;
-			}
-		}
-		Mat objectCrop = img1(Rect(obj_startX, obj_startY, obj_endX - obj_startX, obj_endY - obj_startY));
-		Mat sceneCrop = img2(Rect(scene_startX, scene_startY, scene_endX - scene_startX, scene_endY - scene_startY));
-
-		double objArea = (obj_endX - obj_startX) * (obj_endY - obj_startY);
-		double sceneArea = (scene_endX - scene_startX) * (scene_endY - scene_startY);
-
-		if (objArea < 1600 || sceneArea < 1600) {
-			return crops;
-		}
-
-		/*imshow("object", objectCrop);
-		imshow("scene", sceneCrop);
-		imshow("Good Matches", mat_img);
-		waitKey(0);*/
-
-		crops.crop_obj = objectCrop;
-		crops.crop_scene = sceneCrop;
-	}
-
-	return crops;
-}
-
-int findCircle(Mat img)
-{
-	// convert to grayscale
+	// Convert to grayscale
 	Mat gray;
 	cvtColor(img, gray, COLOR_BGR2GRAY);
 
-	// apply blur
+	// Apply blur
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
+	medianBlur(gray, gray, 5);
 	medianBlur(gray, gray, 5);
 
-	// find circles
+	// Find circles
 	vector<Vec3f> circles;
-	HoughCircles(gray, circles, CV_HOUGH_GRADIENT, 1, gray.rows/8, 60, 75, 50, 0);
+	HoughCircles(gray, circles, CV_HOUGH_GRADIENT, 1, gray.rows, 60, 75, 50, 0);
+
+	/*Mat drawing = Mat::zeros(gray.size(), CV_8UC3);
 
 	for (size_t i = 0; i < circles.size(); i++)
 	{
 		Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
 		int radius = cvRound(circles[i][2]);
-		// circle center
-		circle(gray, center, 3, Scalar(0, 255, 0), -1, 8, 0);
-		// circle outline
-		circle(gray, center, radius, Scalar(0, 0, 255), 3, 8, 0);
+		circle(drawing, center, 3, Scalar(0, 255, 0), -1, 8, 0);
+		circle(drawing, center, radius, Scalar(0, 0, 255), 3, 8, 0);
 	}
 
-	/*namedWindow("circle", CV_WINDOW_AUTOSIZE);
-	imshow("circle", gray);
+	namedWindow("Circles", CV_WINDOW_AUTOSIZE);
+	imshow("Circles", drawing);
+
 	waitKey(0);*/
 
-	return circles.size();
+	return circles.size() > 0;
 }
 
-//Compute similarity
-double compareImgs(Mat img1, Mat img2)
+Mat getHistogram(Mat img)
 {
-	double score = 0;
+	// Convert to HSV
+	Mat hsv;
+	cvtColor(img, hsv, COLOR_BGR2HSV);
 
-	crops crops = featureMatching(img1, img2);
+	// Calculate histogram
+	int hBins = 8, sBins = 12;
+	int histSize[] = { hBins, sBins };
+	float hRanges[] = { 0, 180 }, sRanges[] = { 0, 256 };
+	const float* ranges[] = { hRanges, sRanges };
+	int channels[] = { 0, 1 };
 
-	if (!crops.crop_scene.empty()) {
-		Mat crop_obj = crops.crop_obj;
-		Mat crops_scene = crops.crop_scene;
+	Mat histogram;
 
-		features features1 = getHist(crop_obj);
-		features features2 = getHist(crops_scene);
+	for (int i = 0; i < 5; i++) {
+		calcHist(&hsv, 1, channels, Mat(), histogram, 2, histSize, ranges);
+		normalize(histogram, histogram, 0, 1, NORM_MINMAX, -1, Mat());
+	}
 
-		for (int i = 0; i < 5; i++) {
-			score += compareHist(features1.histograms[i], features2.histograms[i], 1);
+	return histogram;
+}
+
+// Compute similarity
+double compareImgs(Mat img1, Mat img2, int index2)
+{
+	features features1, features2;
+
+	// Set index file name
+	const int filename_len = 900;
+	char indexName[filename_len];
+	sprintf_s(indexName, filename_len, "%s\\%s\\%s%s", IMAGE_folder, IMAGE_LIST_FILE, std::to_string(index2), INDEX_extension);
+
+	features1 = searchFeatures;
+
+	FileStorage fr(indexName, FileStorage::READ);
+
+	if (fr["pentagons"].size() > 0) { // File exists
+
+		fr["pentagons"] >> features2.hasPentagons;
+		fr["circles"] >> features2.hasCircles;
+
+		if (!features2.hasPentagons || !features2.hasCircles) {
+			fr.release();
+			return DBL_MAX;
 		}
+
+		fr["histogram"] >> features2.histogram;
+		fr.release();
+
 	}
-	else {
-		score = DBL_MAX;
+	else { // File not exists
+
+		features2.hasPentagons = findPentagons(img2);
+		features2.hasCircles = findCircles(img2);
+
+		FileStorage fw(indexName, FileStorage::WRITE);
+		fw << "pentagons" << features2.hasPentagons;
+		fw << "circles" << features2.hasCircles;
+
+		if (!features2.hasPentagons || !features2.hasCircles) {
+			fw.release();
+			return DBL_MAX;
+		}
+
+		features2.histogram = getHistogram(img2);
+		fw << "histogram" << features2.histogram;
+		fw.release();
+
 	}
 
-	return score;
+	if (searchFeatures.histogram.empty()) {
+		return DBL_MAX;
+	}
+
+	return compareHist(features1.histogram, features2.histogram, 1);
 }
 
 int main(int argc, char** argv)
 {
+	std::clock_t start;
+	start = std::clock();
+
 	Mat src_input;
 	Mat db_img;
 
@@ -253,7 +208,7 @@ int main(int argc, char** argv)
 	const int db_size = 1000;
 	int db_id = 0;
 
-	const int score_size = 10; //Change this to control return top n images
+	const int score_size = 10; // Change this to control return top n images
 	double minscore[score_size] = { DBL_MAX };
 	int minFilename[score_size];
 
@@ -261,7 +216,7 @@ int main(int argc, char** argv)
 	Mat min_img;
 
 	sprintf_s(tempname, filename_len, "%s\\%s\\%s", IMAGE_folder, IMAGE_LIST_FILE, SEARCH_IMAGE);
-	src_input = imread(tempname); //Read input image
+	src_input = imread(tempname); // Read input image
 	if (!src_input.data)
 	{
 		printf("Cannot find the input image!\n");
@@ -270,10 +225,43 @@ int main(int argc, char** argv)
 	}
 	imshow("Input", src_input);
 
+	int searchIndex = atoi(((string)SEARCH_IMAGE).erase(((string)SEARCH_IMAGE).find(".jpg"), 4).c_str());
+
+	// Set index file name
+	char indexName[filename_len];
+	sprintf_s(indexName, filename_len, "%s\\%s\\%s%s", IMAGE_folder, IMAGE_LIST_FILE, std::to_string(searchIndex), INDEX_extension);
+
+	// Get features of search image
+
+	FileStorage fr(indexName, FileStorage::READ);
+
+	if (fr["pentagons"].size() > 0) { // File exists
+
+		fr["pentagons"] >> searchFeatures.hasPentagons;
+		fr["circles"] >> searchFeatures.hasCircles;
+		fr["histogram"] >> searchFeatures.histogram;
+		fr.release();
+
+	}
+	else { // File not exists
+
+		searchFeatures.hasPentagons = findPentagons(src_input);
+		searchFeatures.hasCircles = findCircles(src_input);
+
+		FileStorage fw(indexName, FileStorage::WRITE);
+		fw << "pentagons" << searchFeatures.hasPentagons;
+		fw << "circles" << searchFeatures.hasCircles;
+
+		searchFeatures.histogram = getHistogram(src_input);
+		fw << "histogram" << searchFeatures.histogram;
+		fw.release();
+
+	}
+
 	//Read Database
 	for (db_id; db_id<db_size; db_id++) {
 		sprintf_s(tempname, filename_len, "%s\\%s\\%d.jpg", IMAGE_folder, IMAGE_LIST_FILE, db_id);
-		db_img = imread(tempname); //Read database image
+		db_img = imread(tempname); // Read database image
 		if (!db_img.data)
 		{
 			printf("Cannot find the database image number %d!\n", db_id + 1);
@@ -281,12 +269,12 @@ int main(int argc, char** argv)
 			return -1;
 		}
 
-		//Apply the pixel-by-pixel comparison method
-		double tempScore = compareImgs(src_input, db_img);
+		// Apply the pixel-by-pixel comparison method
+		double tempScore = compareImgs(src_input, db_img, db_id);
 
 		printf("%s done!\n", tempname);
 
-		//Store the top k min score ascending
+		// Store the top k min score ascending
 		for (int k = 0; k<score_size; k++) {
 			if (tempScore < minscore[k]) {
 				for (int k1 = score_size - 1; k1>k; k1--) {
@@ -300,17 +288,18 @@ int main(int argc, char** argv)
 		}
 	}
 
-	//Read the top k max score image and write them to the a designated folder
+	printf("\n");
+
+	// Read the top k max score image and write them to the a designated folder
 	for (int k = 0; k<score_size; k++) {
 		sprintf_s(minimg_name, filename_len, "%s\\%s\\%d.jpg", IMAGE_folder, IMAGE_LIST_FILE, minFilename[k]);
 		min_img = imread(minimg_name);
-		printf("the most similar image %d is %d.jpg, the pixel-by-pixel difference is %f\n", k + 1, minFilename[k], minscore[k]);
+		printf("the most similar image %d is %d.jpg, the histogram chi-squared difference is %.3f\n", k + 1, minFilename[k], minscore[k]);
 		sprintf_s(tempname, filename_len, "%s\\%s\\%d.jpg", IMAGE_folder, output_LIST_FILE, minFilename[k]);
 		imwrite(tempname, min_img);
-		//imshow(tempname,max_img);
 	}
 
-	//Output your precesion and recall (the ground truth are from 990 to 999)
+	// Output your precesion and recall (the ground truth are from 990 to 999)
 	int count = 0;
 	for (int k = 0; k<score_size; k++) {
 		if (minFilename[k] >= 990 && minFilename[k] <= 999) {
@@ -320,12 +309,12 @@ int main(int argc, char** argv)
 	double precision = (double)count / score_size;
 	double recall = (double)count / 10;
 
-	printf("the precision and the recall for %s is %.2f and %.2f.\n", SEARCH_IMAGE, precision, recall);
+	printf("\nthe precision and the recall for %s is %.2f and %.2f.\n", SEARCH_IMAGE, precision, recall);
 
-	printf("Done \n");
+	printf("Done, Time elapsed = %.3f seconds \n", (std::clock() - start) / (double)CLOCKS_PER_SEC);
 
-	//Wait for the user to press a key in the GUI window.
-	//Press ESC to quit
+	// Wait for the user to press a key in the GUI window.
+	// Press ESC to quit
 	int keyValue = 0;
 	while (keyValue >= 0)
 	{
