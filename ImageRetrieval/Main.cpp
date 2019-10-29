@@ -14,10 +14,10 @@
 using namespace std;
 using namespace cv;
 
-#define IMAGE_folder "H:\\dataset" // change to your folder location
+#define IMAGE_folder "D:\\dataset" // change to your folder location
 #define IMAGE_LIST_FILE "dataset1" //the dataset1 for retrieval
 #define output_LIST_FILE "searchResults" //the search results will store in this file
-#define SEARCH_IMAGE "990.jpg" //change from 990 to 999 as the search images to get your output
+#define SEARCH_IMAGE "999.jpg" //change from 990 to 999 as the search images to get your output
 #define INDEX_extension ".yml" // file type for indexing
 
 struct features {
@@ -52,7 +52,7 @@ bool findPentagons(Mat img) {
 	vector<vector<Point>> contours_poly(contours.size());
 
 	for (int i = 0; i < contours.size(); i++)
-		approxPolyDP(Mat(contours[i]), contours_poly[i], arcLength(contours[i], true) * 0.02, true);
+		approxPolyDP(Mat(contours[i]), contours_poly[i], arcLength(contours[i], true) * 0.04, true);
 
 	// Filter for convex pentagons
 	vector<vector<Point>> hull(contours_poly.size());
@@ -139,59 +139,66 @@ Mat getHistogram(Mat img)
 	return histogram;
 }
 
-// Compute similarity
-double compareImgs(Mat img1, Mat img2, int index2)
+features getFeatures(Mat img, int index)
 {
-	features features1, features2;
+	features features;
 
 	// Set index file name
 	const int filename_len = 900;
 	char indexName[filename_len];
-	sprintf_s(indexName, filename_len, "%s\\%s\\%s%s", IMAGE_folder, IMAGE_LIST_FILE, std::to_string(index2), INDEX_extension);
-
-	features1 = searchFeatures;
+	sprintf_s(indexName, filename_len, "%s\\%s\\%s%s", IMAGE_folder, IMAGE_LIST_FILE, std::to_string(index), INDEX_extension);
 
 	FileStorage fr(indexName, FileStorage::READ);
 
 	if (fr["pentagons"].size() > 0) { // File exists
 
-		fr["pentagons"] >> features2.hasPentagons;
-		fr["circles"] >> features2.hasCircles;
+		fr["pentagons"] >> features.hasPentagons;
+		fr["circles"] >> features.hasCircles;
 
-		if (!features2.hasPentagons || !features2.hasCircles) {
+		if (!features.hasPentagons || !features.hasCircles) {
 			fr.release();
-			return DBL_MAX;
+			return features;
 		}
 
-		fr["histogram"] >> features2.histogram;
+		fr["histogram"] >> features.histogram;
 		fr.release();
+		return features;
 
 	}
 	else { // File not exists
 
-		features2.hasPentagons = findPentagons(img2);
-		features2.hasCircles = findCircles(img2);
+		features.hasPentagons = findPentagons(img);
+		features.hasCircles = findCircles(img);
 
 		FileStorage fw(indexName, FileStorage::WRITE);
-		fw << "pentagons" << features2.hasPentagons;
-		fw << "circles" << features2.hasCircles;
+		fw << "pentagons" << features.hasPentagons;
+		fw << "circles" << features.hasCircles;
 
-		if (!features2.hasPentagons || !features2.hasCircles) {
+		if (!features.hasPentagons || !features.hasCircles) {
 			fw.release();
-			return DBL_MAX;
+			return features;
 		}
 
-		features2.histogram = getHistogram(img2);
-		fw << "histogram" << features2.histogram;
+		features.histogram = getHistogram(img);
+		fw << "histogram" << features.histogram;
 		fw.release();
+		return features;
 
 	}
+}
 
-	if (searchFeatures.histogram.empty()) {
+// Compute similarity
+double compareImgs(Mat db_img, int db_index)
+{
+	if (searchFeatures.histogram.empty())
 		return DBL_MAX;
-	}
 
-	return compareHist(features1.histogram, features2.histogram, 1);
+	features db_img_features = getFeatures(db_img, db_index);
+
+	if (!db_img_features.hasPentagons || !db_img_features.hasCircles)
+		return DBL_MAX;
+
+	return compareHist(searchFeatures.histogram, db_img_features.histogram, 1);
 }
 
 int main(int argc, char** argv)
@@ -227,36 +234,7 @@ int main(int argc, char** argv)
 
 	int searchIndex = atoi(((string)SEARCH_IMAGE).erase(((string)SEARCH_IMAGE).find(".jpg"), 4).c_str());
 
-	// Set index file name
-	char indexName[filename_len];
-	sprintf_s(indexName, filename_len, "%s\\%s\\%s%s", IMAGE_folder, IMAGE_LIST_FILE, std::to_string(searchIndex), INDEX_extension);
-
-	// Get features of search image
-
-	FileStorage fr(indexName, FileStorage::READ);
-
-	if (fr["pentagons"].size() > 0) { // File exists
-
-		fr["pentagons"] >> searchFeatures.hasPentagons;
-		fr["circles"] >> searchFeatures.hasCircles;
-		fr["histogram"] >> searchFeatures.histogram;
-		fr.release();
-
-	}
-	else { // File not exists
-
-		searchFeatures.hasPentagons = findPentagons(src_input);
-		searchFeatures.hasCircles = findCircles(src_input);
-
-		FileStorage fw(indexName, FileStorage::WRITE);
-		fw << "pentagons" << searchFeatures.hasPentagons;
-		fw << "circles" << searchFeatures.hasCircles;
-
-		searchFeatures.histogram = getHistogram(src_input);
-		fw << "histogram" << searchFeatures.histogram;
-		fw.release();
-
-	}
+	searchFeatures = getFeatures(src_input, searchIndex);
 
 	//Read Database
 	for (db_id; db_id<db_size; db_id++) {
@@ -270,7 +248,7 @@ int main(int argc, char** argv)
 		}
 
 		// Apply the pixel-by-pixel comparison method
-		double tempScore = compareImgs(src_input, db_img, db_id);
+		double tempScore = compareImgs(db_img, db_id);
 
 		printf("%s done!\n", tempname);
 
