@@ -18,7 +18,7 @@ using namespace cv;
 
 #define IMAGE_folder "D:\\dataset" // Change to your folder location
 #define IMAGE_LIST_FILE "dataset2" // The dataset2 for detection
-#define DETECTION_IMAGE 10 // Change from 1 to 10 as the detection images to get your output
+#define DETECTION_IMAGE 1 // Change from 1 to 10 as the detection images to get your output
 #define SEARCH_IMAGE "football.png" // Input information
 
 bool findPentagons(Mat img) {
@@ -55,20 +55,23 @@ bool findPentagons(Mat img) {
 		}
 	}
 
-	/*Mat drawing = Mat::zeros(gray.size(), CV_8UC3);
-
-	for (int i = 0; i < contours_poly.size(); i++) {
-	drawContours(drawing, hull, i, Scalar(255, 0, 0), 1, 8, vector<Vec4i>(), 0, Point());
-	}
-
-	namedWindow("Pentagons", CV_WINDOW_AUTOSIZE);
-	imshow("Pentagons", drawing);
-
-	waitKey(0);*/
-
 	for (int i = 0; i < hull.size(); i++) {
-		if (hull[i].size() == 5)
+		if (hull[i].size() == 5) {
+
+			/*Mat drawing = Mat::zeros(gray.size(), CV_8UC3);
+
+			for (int i = 0; i < contours_poly.size(); i++) {
+			drawContours(drawing, hull, i, Scalar(255, 0, 0), 1, 8, vector<Vec4i>(), 0, Point());
+			}
+
+			namedWindow("Pentagons", CV_WINDOW_AUTOSIZE);
+			imshow("Pentagons", drawing);
+
+			waitKey(0);*/
+
 			return true;
+
+		}
 	}
 
 	return false;
@@ -103,7 +106,7 @@ double compareImgs(Mat img1, Mat img2)
 	double score = compareHist(getHistogram(img2), getHistogram(img1), 1);
 
 	if (findPentagons(img1)) {
-		score *= 0.5;
+		score = 0;
 	}
 
 	return score;
