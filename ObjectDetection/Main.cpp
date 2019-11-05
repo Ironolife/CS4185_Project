@@ -20,7 +20,7 @@ using namespace cv;
 
 #define IMAGE_folder "H:\\dataset" // Change to your folder location
 #define IMAGE_LIST_FILE "dataset2" // The dataset2 for detection
-#define DETECTION_IMAGE 3 // Change from 1 to 10 as the detection images to get your output
+#define DETECTION_IMAGE 1 // Change from 1 to 10 as the detection images to get your output
 #define SEARCH_IMAGE "football.png" // Input information
 
 bool findPentagons(Mat img) {
@@ -165,6 +165,7 @@ int main(int argc, char** argv)
 	if (visC == 'Y') {
 		visualize = true;
 		db_img.copyTo(visImg);
+		printf("Press any key when focusing on the visualization window to go to next scale.\n");
 	}
 	else {
 		visualize = false;
@@ -231,7 +232,7 @@ int main(int argc, char** argv)
 			}
 
 			imshow("Visualization", visImg);
-			waitKey(1000);
+			cvWaitKey(0);
 			db_img.copyTo(visImg);
 
 		}
