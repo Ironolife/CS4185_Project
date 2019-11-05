@@ -12,13 +12,15 @@
 #include <iostream>
 #include <stdio.h>
 #include <algorithm>
+#include <ctime>
+#include <math.h>
 
 using namespace std;
 using namespace cv;
 
-#define IMAGE_folder "D:\\dataset" // Change to your folder location
+#define IMAGE_folder "H:\\dataset" // Change to your folder location
 #define IMAGE_LIST_FILE "dataset2" // The dataset2 for detection
-#define DETECTION_IMAGE 1 // Change from 1 to 10 as the detection images to get your output
+#define DETECTION_IMAGE 3 // Change from 1 to 10 as the detection images to get your output
 #define SEARCH_IMAGE "football.png" // Input information
 
 bool findPentagons(Mat img) {
@@ -114,6 +116,8 @@ double compareImgs(Mat img1, Mat img2)
 
 int main(int argc, char** argv)
 {
+	std::clock_t startTime;
+
 	Mat src_input, db_img;
 
 	const int filename_len = 900;
@@ -151,19 +155,44 @@ int main(int argc, char** argv)
 	int max_scale_w = 150, max_scale_h = 150;
 	// You can change the search step of scale and location in your code, 
 	// Which will influce both the perforance and speed, you may need a tradeoff
-	int scale_step = 10, location_step = 30;
+	int scale_step = 10;
+
+	// Input for visualization
+	bool visualize; char visC;
+	Mat visImg;
+	printf("Visualize comparison process? (Y/N): ");
+	cin >> visC;
+	if (visC == 'Y') {
+		visualize = true;
+		db_img.copyTo(visImg);
+	}
+	else {
+		visualize = false;
+	}
+
+	double areaScore[999] = {-1};
+
+	startTime = std::clock();
 
 	// We assume the scale_w should be equals to scale_h in the round ball detection, 
 	// Thus length-width ratio is always 1 in this algorithmn.
 	// For other object, you may need to try different length-width ratio  
-	for (scale_w; scale_w<max_scale_w; scale_w += scale_step, scale_h += scale_step) {
+	for (scale_w; scale_w < max_scale_w; scale_w += scale_step, scale_h += scale_step) {
+
+		int location_step = scale_w;
+
 		int max_x = w - scale_w, max_y = h - scale_h;
+
+		int areaIndex = 0;
+
 		for (int x = 0; x < max_x; x += location_step) for (int y = 0; y < max_y; y += location_step)
 		{
 			// Capture the image region in the searching bounding box
 			Mat db_region_img(db_img, Rect(x, y, scale_w, scale_h));
 			// Apply the pixel-by-pixel comparison method
 			double tempScore = compareImgs(db_region_img, src_input);
+
+			areaScore[areaIndex++] = tempScore;
 
 			// Store the top k(k=score_size) match bounding box and score
 			for (int k = 0; k<score_size; k++) {
@@ -184,6 +213,29 @@ int main(int argc, char** argv)
 				}
 			}
 		}
+
+		// Visualization
+		if (visualize) {
+
+			double max_difference = *max_element(areaScore, areaScore + areaIndex);
+
+			int visIndex = 0;
+
+			for (int x = 0; x < max_x; x += location_step) for (int y = 0; y < max_y; y += location_step)
+			{
+				Mat area = visImg(Rect(x, y, scale_w, scale_h));
+				Mat color(area.size(), CV_8UC3, Scalar(0, 255, 0));
+				double alphaValue = (1 - areaScore[visIndex++] / max_difference) * 0.7;
+				addWeighted(color, alphaValue, area, 1.0 - alphaValue, 0.0, area);
+				rectangle(visImg, Point(x, y), Point(x + scale_w, y + scale_h), Scalar(255, 255, 0));
+			}
+
+			imshow("Visualization", visImg);
+			waitKey(1000);
+			db_img.copyTo(visImg);
+
+		}
+
 	}
 
 	// Draw the best match[top k (k=score_size)] rectangele
@@ -231,7 +283,11 @@ int main(int argc, char** argv)
 	sprintf_s(tempname, filename_len, "%s\\detectionResults\\%d.jpg", IMAGE_folder, DETECTION_IMAGE);
 	imwrite(tempname, db_img);
 
-	printf("Done \n");
+	printf("Done, Time elapsed = %.3f seconds \n", (std::clock() - startTime) / (double)CLOCKS_PER_SEC);
+
+	if (visualize)
+		printf("Visualization is enabled, thus time is not accurate for evaluation.\n");
+
 	// Wait for the user to press a key in the GUI window.
 	// Press ESC to quit
 	int keyValue = 0;
