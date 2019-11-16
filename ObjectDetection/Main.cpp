@@ -18,7 +18,7 @@
 using namespace std;
 using namespace cv;
 
-#define IMAGE_folder "H:\\dataset" // Change to your folder location
+#define IMAGE_folder "D:\\dataset" // Change to your folder location
 #define IMAGE_LIST_FILE "dataset2" // The dataset2 for detection
 #define DETECTION_IMAGE 1 // Change from 1 to 10 as the detection images to get your output
 #define SEARCH_IMAGE "football.png" // Input information
@@ -94,10 +94,8 @@ Mat getHistogram(Mat img)
 
 	Mat histogram;
 
-	for (int i = 0; i < 5; i++) {
-		calcHist(&hsv, 1, channels, Mat(), histogram, 2, histSize, ranges);
-		normalize(histogram, histogram, 0, 1, NORM_MINMAX, -1, Mat());
-	}
+	calcHist(&hsv, 1, channels, Mat(), histogram, 2, histSize, ranges);
+	normalize(histogram, histogram, 0, 1, NORM_MINMAX, -1, Mat());
 
 	return histogram;
 }

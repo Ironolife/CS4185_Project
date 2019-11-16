@@ -14,7 +14,7 @@
 using namespace std;
 using namespace cv;
 
-#define IMAGE_folder "H:\\dataset" // change to your folder location
+#define IMAGE_folder "D:\\dataset" // change to your folder location
 #define IMAGE_LIST_FILE "dataset1" //the dataset1 for retrieval
 #define output_LIST_FILE "searchResults" //the search results will store in this file
 #define SEARCH_IMAGE "999.jpg" //change from 990 to 999 as the search images to get your output
@@ -131,10 +131,8 @@ Mat getHistogram(Mat img)
 
 	Mat histogram;
 
-	for (int i = 0; i < 5; i++) {
-		calcHist(&hsv, 1, channels, Mat(), histogram, 2, histSize, ranges);
-		normalize(histogram, histogram, 0, 1, NORM_MINMAX, -1, Mat());
-	}
+	calcHist(&hsv, 1, channels, Mat(), histogram, 2, histSize, ranges);
+	normalize(histogram, histogram, 0, 1, NORM_MINMAX, -1, Mat());
 
 	return histogram;
 }
